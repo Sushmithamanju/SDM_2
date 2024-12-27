@@ -1,0 +1,279 @@
+---
+title: '**Prediction of Oil Sales**'
+author: "Mounika Pasupuleti, Saahithi Chippa, Sahithya Arveti Nagaraju, Sushmitha Manjunatha"
+subtitle: Statistical Learning II | Project 2
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(readr)
+library(forecast)
+library(tidyverse)
+```
+
+## 1. Load the dataset
+```{r}
+# Loading the data
+set.seed(90)
+data <- read.csv("oil.csv", na.strings = c("", "NA"))
+head(data)
+```
+
+Given dataset consists of only 2 columns date and dcoilwtico.
+
+# 2. Plot the time series as is (without imputation)
+
+```{r}
+# Convert date column to Date type
+str(data)
+data$date <- as.Date(data$date, format = "%Y-%m-%d")
+
+plot(data, ylab = 'Oil Prices', xlab = 'Year', type = 'l', main = "Time Series of Oil Prices")
+```
+
+The graph clearly shows that there are some gaps in the data, indicating that some values are missing in the dataset.
+
+# 3 Filling the missing data
+
+```{r}
+sum(is.na(data))
+```
+
+The number of missing values in this dataset are "43".
+
+Linear interpolation is the method used in time series data imputation where an estimate of the missing values from the nearest available values both before and after the gap in the series is calculated. 
+
+This method, which is a straight-line approach to fill in missing data, has been applied with the na.approx() function in the zoo package in R. The argument rule = 2 handles missing values at the start or end of the series by using available data from the opposite end. It works quite well when data follows a relatively smooth, linear trend and gaps are small. 
+
+Linear interpolation is simple, computationally efficient, and widely used in time series preprocessing, especially when the missing values are scattered and do not represent major structural breaks in the data.
+
+
+```{r}
+#Linear Interpolation
+library(zoo)
+data$dcoilwtico <- na.approx(data$dcoilwtico, rule = 2)
+
+```
+
+# 4. Time Series with imputed data.
+
+```{r}
+plot(data, ylab = 'Oil Prices', xlab = 'Year', type = 'l', main = "Time Series of Oil Prices")
+```
+
+```{r}
+# Decompose the time series to find trend ans seasonality
+library(forecast)
+oil_ts <- ts(data$dcoilwtico, start = c(2013), end=c(2017), frequency = 365) 
+
+decomposed <- stl(oil_ts, s.window = "periodic")
+autoplot(decomposed)
+```
+
+# Trend and/or seasonality in the data?
+Trend: The above graph clearly shows a downward trend in the data, which means that overall oil prices decreased from 2013 to 2015 and then stabilizes in the mid-2015 and started a slow upward trends post-mid-2015.
+
+Seasonality: From the seasonal graph plotted above clearly shows a repetitive cycle with some small fluctuations in the oil prices. By observing the seasonality graph there are recurring yearly patterns, with price peaks at the start of the year and declines towards end which indicates that there is annual seasonality. 
+
+Summary: The overall graph shows a trend shifts from decline to gradual rise in oil prices and seasonality shows repeating annual cycles of price peaks and dips.
+
+# 5. ETS models and about Holt-Winters models
+### Theoretical Overview
+
+#### 1. **ETS (Error, Trend, Seasonality) Models**
+
+The **ETS** (Error, Trend, Seasonality), is one of the more common model frameworks used in time series forecasting. It breaks down a given univariate time series into three key components:
+
+- **Error (E)**: This represents the residual or random variation in the data once the trend and seasonality are accounted for. The error component may be:
+
+  - **Additive**: The error is the same over time.
+  - **Multiplicative**: The error changes proportionally with the size of the data.
+
+- **Trend (T)**: Models the underlying long-term direction or movement, which can be an increase, a decrease, or no change. The trend component can be:
+
+  - **None**: No trend is modeled.
+  - **Additive**: The trend increases or decreases by a fixed amount over time.
+  - **Multiplicative**: The trend grows or shrinks at a rate proportional to the current level of the data.
+
+- **Seasonality (S)**: This represents periodic variations in the data that recur at fixed periods, for instance, yearly or monthly. The seasonality component can be one of the following:
+
+  - **None**: No seasonality is assumed.
+  - **Additive**: The effect of the seasonality does not change over time. 
+  - **Multiplicative**: The effect of seasonality changes proportionally with the level of the data.
+
+This gives several possible ETS models, such as:
+
+- **ETS(AAA)**: Additive error, additive trend, and additive seasonality
+- **ETS(AAM)**: Additive error, additive trend, and multiplicative seasonality
+- **ETS(AMM)**: Additive error, multiplicative trend, and multiplicative seasonality
+- **ETS(MMM)**: Multiplicative error, multiplicative trend, and multiplicative seasonality
+
+In **R**, the `ets()` function automatically selects the best-fitting model based on criteria such as the **Akaike Information Criterion (AIC)**, which is used to select the model that minimizes the information loss.
+
+---
+
+#### 2. **Holt-Winters Models**
+
+The Holt-Winters method is the peculiar case of the ETS model targeted at time series data possessing both trend and seasonality. The most important aspects of the Holt-Winters model are:
+
+- **Level (L)**: it gives the smoothed value of the time series at a certain time representing the base value.
+- **Trend (T)**: to capture slope-the direction in which the values are moving over time, indicating either an increase or a decrease.
+- **Seasonality (S)**: Repeated patterns, cycles appearing at fixed intervals within the series.
+
+There in exist two key forms depending on the kind of application used with the seasonality component:
+
+- **Additive Seasonality**: The magnitude of the seasonal fluctuations remains constant over time.
+- **Multiplicative Seasonality**: The magnitude of the seasonality wobbles in the series increases as well as decreases in the relation to the level in a series.
+
+The Holt-Winters method contains three smoothing parameters that regulate the speed of response of the model to new data:
+
+- **Alpha (α)**: The smoothing parameter for the level component. It controls how quickly the model adapts to new observations for the level.
+- **Beta (β)**: The smoothing parameter for the trend component. It governs how quickly the model adjusts to changes in the trend.
+- **Gamma (γ)**: The smoothing parameter for the seasonal component. It regulates how quickly the model adjusts to changes in seasonality.
+
+Additionally, a **damped** version of Holt-Winters model is also used where the trend damps out over time. Such models are useful when a trend is expected to diminish but not continue indefinitely.
+
+
+# 6.	Suitable model(s) for the data.
+From the above identified trend and seasonality, we can clearly exhibits a clear annual seasonal pattern with non-linear trend. Based on this, we can explore the following models:
+
+1. ETS Models: As discussed above we can explore this model as it automatically choose best combination.
+2. Holt-Winters Models: As discussed above it is special case of ETS which explicitly focusing on trend and seasonality. So, we can explore this model.
+3. STL + ETS Models: As our model contain both seasonal pattern and non-linear trend. This model helps us to handle complex seasonal patterns and non-linear trends.
+4. SARIMA (Seasonal ARIMA): This model is an extension of ARIMA model which will be useful for time series with seasonal patterns and autocorrelated residuals. 
+
+```{r}
+n <- nrow(data)
+train <- data[1:(n - 12), ]  # Training set (all except the last 12 observations)
+test <- data[(n - 11):n, ]   # Test set (last 12 observations)
+
+# Converting training data to a time series object
+train_ts <- ts(train$dcoilwtico, start = c(2013), frequency = 365)
+```
+
+# 7.	Run the models and check their adequacy.
+## ETS Model
+```{r}
+# Forecasting for next 30 days
+ets_forecast <- forecast(ets(train_ts), h = 30)  
+summary(ets_forecast)
+plot(ets_forecast, main = "ETS Model Forecast")
+```
+
+## STL Model
+```{r}
+stl_forecast <- forecast(stlf(train_ts), h = 30)
+summary(stl_forecast)
+plot(stl_forecast, main = "STLForecast")
+```
+
+## Holt-Winters Model with Model "Additive and Multiplicative Seasonality"
+```{r}
+# Forecast using Holt-Winters model
+hw_additive <- HoltWinters(train_ts, seasonal = "additive")
+forecast_additive <- forecast(hw_additive, h = 30)
+summary(forecast_additive)
+plot(forecast_additive, main = "Holt-Winters Forecast (Additive)")
+```
+
+```{r}
+# Multiplicative Seasonality
+hw_multiplicative <- HoltWinters(train_ts, seasonal = "multiplicative")
+forecast_multiplicative <- forecast(hw_multiplicative, h = 30)
+summary(forecast_multiplicative)
+plot(forecast_multiplicative, main = "Holt-Winters Forecast (Multiplicative)")
+```
+
+
+## SARIMA Model
+```{r}
+forecast_sarima <- forecast(auto.arima(train_ts, seasonal = TRUE), h = 30)  
+summary(forecast_sarima)
+plot(forecast_sarima, main = "SARIMA Forecast")
+```
+
+```{r}
+checkresiduals(ets_forecast)
+```
+
+By performing Ljung-Box test for ETS model we can observe that the residuals are uncorrelated ,since the p-value(0.2506) > 0.05.  The ETS(A, N, N) captures the time series structure well.
+
+
+```{r}
+checkresiduals(stl_forecast)
+```
+
+By performing Ljung-Box test for stl model we can observe that the residuals are autocorrelated, since the p-value(0.0004) < 0.05.  The STL + ETS(A, Ad, N) does not captures the time series structure well.
+
+
+```{r}
+checkresiduals(forecast_additive)
+```
+
+The residuals are uncorrelated, indicating this Holt-Winters model (second variant) is a good fit for the data.
+
+```{r}
+checkresiduals(forecast_multiplicative)
+```
+
+By performing Ljung-Box test for Holt-Winters models both additive and multiplicative we can observe that the residuals are uncorrelated, since the p-value > 0.05.  The model captures the time series structures well.
+
+```{r}
+checkresiduals(forecast_sarima)
+```
+
+By performing Ljung-Box test for SARIMA model we can observe that the residuals are uncorrelated, since the p-value > 0.05.  The model captures the time series structures well.
+
+
+# 8.	Comparison of models’ performance
+```{r}
+ets_accuracy <- accuracy(ets_forecast, test$dcoilwtico)
+stl_accuracy <- accuracy(stl_forecast, test$dcoilwtico)
+hw_additive_accuracy <- accuracy(forecast_additive, test$dcoilwtico)
+hw_multiplicative_accuracy <- accuracy(forecast_multiplicative, test$dcoilwtico)
+sarima_accuracy <- accuracy(forecast_sarima, test$dcoilwtico)
+
+cat("Model Metrics Comparison:\n")
+
+cat("\nETS Model Metrics: ",
+    "RMSE:", ets_accuracy["Test set", "RMSE"], 
+    "| MAE:", ets_accuracy["Test set", "MAE"], 
+    "| MAPE:", ets_accuracy["Test set", "MAPE"], "\n")
+
+cat("STL Model Metrics: ",
+    "RMSE:", stl_accuracy["Test set", "RMSE"], 
+    "| MAE:", stl_accuracy["Test set", "MAE"], 
+    "| MAPE:", stl_accuracy["Test set", "MAPE"], "\n")
+
+cat("Holt-Winters Additive Metrics: ",
+    "RMSE:", hw_additive_accuracy["Test set", "RMSE"], 
+    "| MAE:", hw_additive_accuracy["Test set", "MAE"], 
+    "| MAPE:", hw_additive_accuracy["Test set", "MAPE"], "\n")
+
+cat("Holt-Winters Multiplicative Metrics: ",
+    "RMSE:", hw_multiplicative_accuracy["Test set", "RMSE"], 
+    "| MAE:", hw_multiplicative_accuracy["Test set", "MAE"], 
+    "| MAPE:", hw_multiplicative_accuracy["Test set", "MAPE"], "\n")
+
+cat("SARIMA Model Metrics: ",
+    "RMSE:", sarima_accuracy["Test set", "RMSE"], 
+    "| MAE:", sarima_accuracy["Test set", "MAE"], 
+    "| MAPE:", sarima_accuracy["Test set", "MAPE"], "\n")
+
+```
+
+## Model with a low RMSE
+
+*Observations:*
+ETS and SARIMA models perform best, with the lowest RMSE values of 0.8222896 and 0.8216345 respectively which is approximately ~0.822. But SARIMA performs slightly better compared to ETS in terms of RMSE.
+
+The RMSE values are high for both Holt-Winters Additive and Multiplicative models indicating that it is not suitable for this dataset. STL performs better than Holt-winters.
+
+
